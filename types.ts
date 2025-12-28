@@ -22,9 +22,11 @@ export interface Transaction {
   type: 'ecommerce' | 'data';
   status: 'pending' | 'paid' | 'delivered' | 'failed';
   phone: string;
-  customerName?: string
   amount: number;
   planId?: string; // Relation ID to DataPlan
+  productId?: string; // Relation ID to Product
+  customerName?: string; // For ecommerce orders
+  deliveryState?: string; // For ecommerce orders
   createdAt: string;
   deliveryData?: any;
 }
