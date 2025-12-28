@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Smartphone, Wifi, ArrowRight, ShieldCheck, Phone, RefreshCw, Mail } from 'lucide-react';
+import { Smartphone, Wifi, ArrowRight, Phone, Mail, Headphones, MessageCircle } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { api } from '../lib/api';
 import { Transaction } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
+import { BottomSheet } from '../components/ui/BottomSheet';
 
 interface HomeProps {
   onNavigate: (tab: string) => void;
@@ -15,6 +16,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
   const [phone, setPhone] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
 
   const handleTrack = async () => {
     if (phone.length < 10) return;
@@ -39,7 +41,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
   };
 
   return (
-    <div className="p-6 space-y-8 pb-32">
+    <div className="p-6 space-y-6 pb-32">
       {/* Header */}
       <header className="flex justify-between items-start">
         <div>
@@ -51,98 +53,154 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
         </div>
       </header>
 
-      {/* Action Cards */}
-      <div className="grid gap-4">
+      {/* Action Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Store Card - Full Width */}
         <motion.div
           whileTap={{ scale: 0.98 }}
           onClick={() => onNavigate('store')}
-          className="bg-slate-900 text-white rounded-3xl p-6 shadow-lg shadow-slate-200 cursor-pointer relative overflow-hidden group"
+          className="col-span-2 bg-slate-900 text-white rounded-3xl p-6 shadow-lg shadow-slate-200 cursor-pointer relative overflow-hidden group min-h-[160px] flex flex-col justify-end"
         >
-          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Smartphone size={100} />
+          <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
+            <Smartphone size={120} />
           </div>
           <div className="relative z-10">
-            <Smartphone className="w-8 h-8 mb-4 text-slate-300" />
-            <h3 className="text-xl font-semibold mb-1">Buy Devices & SIMs</h3>
-            <p className="text-slate-400 text-sm">Premium gadgets delivered</p>
+            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center mb-3 backdrop-blur-sm">
+                 <Smartphone className="w-5 h-5 text-slate-100" />
+            </div>
+            <h3 className="text-xl font-semibold mb-1">Buy Devices</h3>
+            <p className="text-slate-400 text-xs">Premium gadgets</p>
           </div>
         </motion.div>
 
+        {/* Data Card - Half Width */}
         <motion.div
           whileTap={{ scale: 0.98 }}
           onClick={() => onNavigate('data')}
-          className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm cursor-pointer relative overflow-hidden group"
+          className="col-span-1 bg-blue-600 text-white rounded-3xl p-5 shadow-lg shadow-blue-200 cursor-pointer relative overflow-hidden group min-h-[140px] flex flex-col justify-end"
         >
-           <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Wifi size={100} />
+           <div className="absolute -top-4 -right-4 p-4 opacity-10">
+            <Wifi size={80} />
           </div>
           <div className="relative z-10">
-            <Wifi className="w-8 h-8 mb-4 text-blue-600" />
-            <h3 className="text-xl font-semibold mb-1 text-slate-900">Buy Mobile Data</h3>
-            <p className="text-slate-500 text-sm">Instant activation, best rates</p>
+             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center mb-3 backdrop-blur-sm">
+                <Wifi className="w-4 h-4 text-white" />
+             </div>
+            <h3 className="text-lg font-semibold leading-tight">Mobile Data</h3>
+          </div>
+        </motion.div>
+
+        {/* Support Card - Half Width */}
+        <motion.div
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setIsSupportOpen(true)}
+          className="col-span-1 bg-slate-100 text-slate-900 rounded-3xl p-5 shadow-sm cursor-pointer relative overflow-hidden group min-h-[140px] flex flex-col justify-end"
+        >
+           <div className="absolute -top-4 -right-4 p-4 opacity-5">
+            <Headphones size={80} />
+          </div>
+          <div className="relative z-10">
+             <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm">
+                <Headphones className="w-4 h-4 text-slate-700" />
+             </div>
+            <h3 className="text-lg font-semibold leading-tight">Help & Contact</h3>
           </div>
         </motion.div>
       </div>
 
-      {/* Tracking Section */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-        <h3 className="text-lg font-semibold mb-4 text-slate-900">Track Transaction</h3>
-        <div className="flex gap-2 mb-6">
+      {/* Tracking Section - Compact */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+        <h3 className="text-sm font-semibold mb-3 text-slate-900 flex items-center">
+            Track Order <ArrowRight className="w-3 h-3 ml-1 text-slate-400"/>
+        </h3>
+        <div className="flex gap-2 mb-4">
           <Input 
-            placeholder="Enter phone number" 
+            className="h-10 text-sm"
+            placeholder="Phone number" 
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
-          <Button className="w-auto px-4" onClick={handleTrack} isLoading={isLoading}>
-            <ArrowRight className="w-5 h-5" />
+          <Button className="w-auto px-4 h-10" onClick={handleTrack} isLoading={isLoading}>
+            Go
           </Button>
         </div>
 
-        <div className="space-y-3">
-          {transactions.length > 0 ? (
-            transactions.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+        <div className="space-y-2 max-h-40 overflow-y-auto no-scrollbar">
+          {transactions.map((tx) => (
+              <div key={tx.id} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
                 <div>
-                  <div className="font-medium text-slate-900 capitalize">{tx.type} Purchase</div>
-                  <div className="text-xs text-slate-500">{new Date(tx.createdAt).toLocaleDateString()}</div>
+                  <div className="text-xs font-medium text-slate-900 capitalize">{tx.type}</div>
+                  <div className="text-[10px] text-slate-500">{new Date(tx.createdAt).toLocaleDateString()}</div>
                 </div>
                 <div className="text-right">
-                   <div className="font-semibold text-slate-900">{formatCurrency(tx.amount)}</div>
-                   <span className={cn("text-[10px] uppercase font-bold px-2 py-0.5 rounded-full", getStatusColor(tx.status))}>
+                   <div className="text-xs font-bold text-slate-900">{formatCurrency(tx.amount)}</div>
+                   <span className={cn("text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-full", getStatusColor(tx.status))}>
                      {tx.status}
                    </span>
                 </div>
               </div>
-            ))
-          ) : (
-             <div className="text-center py-8 text-slate-400 text-sm">
-               No recent transactions found
-             </div>
-          )}
+            ))}
+            {transactions.length === 0 && !isLoading && (
+                 <p className="text-xs text-slate-400 text-center py-2">No recent checks</p>
+            )}
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="pt-8 pb-4 text-center space-y-6">
-        <div className="space-y-2">
-            <p className="text-xs text-slate-400">Trusted by SMEDAN • Nigeria</p>
-            
-            <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto">
-                 <a href="tel:+2349024099561" className="bg-slate-100 rounded-lg p-3 flex items-center justify-center text-xs font-medium text-slate-700 hover:bg-slate-200 transition-colors">
-                     <Phone className="w-3 h-3 mr-2" /> 09024099561
-                 </a>
-                 <a href="tel:+2349076872520" className="bg-slate-100 rounded-lg p-3 flex items-center justify-center text-xs font-medium text-slate-700 hover:bg-slate-200 transition-colors">
-                     <Phone className="w-3 h-3 mr-2" /> 09076872520
-                 </a>
-                 <a href="mailto:saukidatalinks@gmail.com" className="bg-slate-100 rounded-lg p-3 flex items-center justify-center text-xs font-medium text-slate-700 hover:bg-slate-200 transition-colors col-span-2">
-                     <Mail className="w-3 h-3 mr-2" /> saukidatalinks@gmail.com
-                 </a>
-                 <a href="https://wa.me/2349024099561" target="_blank" rel="noreferrer" className="bg-green-50 text-green-700 rounded-lg p-3 flex items-center justify-center text-xs font-medium hover:bg-green-100 transition-colors col-span-2">
-                     WhatsApp Support
-                 </a>
-            </div>
-        </div>
-      </footer>
+      {/* Contact Bottom Sheet */}
+      <BottomSheet isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} title="Contact Us">
+          <div className="space-y-6">
+              <div className="text-center space-y-1">
+                  <p className="text-sm font-medium text-slate-900">We are here to help!</p>
+                  <p className="text-xs text-slate-500">Reach out for inquiries or disputes.</p>
+              </div>
+              
+              <div className="grid gap-3">
+                  <a href="tel:+2349024099561" className="flex items-center p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-4">
+                          <Phone className="w-5 h-5" />
+                      </div>
+                      <div>
+                          <p className="text-xs text-slate-500">Support Line 1</p>
+                          <p className="font-semibold text-slate-900">09024099561</p>
+                      </div>
+                  </a>
+
+                  <a href="tel:+2349076872520" className="flex items-center p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mr-4">
+                          <Phone className="w-5 h-5" />
+                      </div>
+                      <div>
+                          <p className="text-xs text-slate-500">Support Line 2</p>
+                          <p className="font-semibold text-slate-900">09076872520</p>
+                      </div>
+                  </a>
+
+                  <a href="https://wa.me/2349024099561" target="_blank" rel="noreferrer" className="flex items-center p-4 rounded-xl bg-green-50 hover:bg-green-100 transition-colors border border-green-100">
+                      <div className="w-10 h-10 rounded-full bg-green-200 flex items-center justify-center text-green-700 mr-4">
+                          <MessageCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                          <p className="text-xs text-green-700">Chat with us</p>
+                          <p className="font-semibold text-green-800">WhatsApp Support</p>
+                      </div>
+                  </a>
+
+                  <a href="mailto:saukidatalinks@gmail.com" className="flex items-center p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors border border-slate-100">
+                      <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mr-4">
+                          <Mail className="w-5 h-5" />
+                      </div>
+                      <div>
+                          <p className="text-xs text-slate-500">Email Us</p>
+                          <p className="font-semibold text-slate-900">saukidatalinks@gmail.com</p>
+                      </div>
+                  </a>
+              </div>
+
+              <div className="pt-4 text-center">
+                   <p className="text-[10px] text-slate-400 uppercase tracking-widest">Trusted by SMEDAN • Nigeria</p>
+              </div>
+          </div>
+      </BottomSheet>
     </div>
   );
 };
