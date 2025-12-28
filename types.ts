@@ -22,6 +22,7 @@ export interface Transaction {
   type: 'ecommerce' | 'data';
   status: 'pending' | 'paid' | 'delivered' | 'failed';
   phone: string;
+  customerName?: string
   amount: number;
   planId?: string; // Relation ID to DataPlan
   createdAt: string;
