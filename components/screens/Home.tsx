@@ -18,7 +18,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
           <h1 className="text-2xl font-black tracking-tight text-slate-900">SAUKI MART</h1>
           <p className="text-slate-500 text-sm mt-1">Premium Services</p>
         </div>
-        <div className="w-12 h-12 bg-white rounded-full shadow-sm border border-slate-100 flex items-center justify-center p-2">
+        <div className="w-16 h-16 bg-white rounded-full shadow-sm border border-slate-100 flex items-center justify-center p-2">
             <img src="/logo.png" alt="Sauki" className="w-full h-full object-contain" />
         </div>
       </header>
@@ -81,7 +81,11 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
       {/* Trust Badges */}
       <div className="pt-4">
         <div className="text-center space-y-4">
-            <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Subsidiary of Sauki Data Links</p>
+            <div className="space-y-1">
+                 <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Subsidiary of Sauki Data Links</p>
+                 <p className="text-[9px] uppercase tracking-widest text-blue-600 font-bold">Government Certified by SMEDAN</p>
+            </div>
+            
             <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm flex items-center justify-center gap-6">
                 <div className="flex flex-col items-center gap-2">
                     <img src="/smedan.png" alt="SMEDAN" className="h-12 w-auto object-contain grayscale opacity-80" onError={(e) => e.currentTarget.style.display = 'none'} />

@@ -4,8 +4,9 @@ import { Button } from '../ui/Button';
 import { api } from '../../lib/api';
 import { Transaction } from '../../types';
 import { cn, formatCurrency } from '../../lib/utils';
-import { Search, Download, RefreshCw, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Search, Download, RefreshCw, AlertTriangle, Loader2 } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import { SharedReceipt } from '../SharedReceipt';
 
 export const Track: React.FC = () => {
   const [phone, setPhone] = useState('');
@@ -37,13 +38,12 @@ export const Track: React.FC = () => {
       try {
           // Verify Transaction calls Flutterwave AND triggers Amigo if paid
           const res = await api.verifyTransaction(tx_ref);
-          // Refresh list to show new status
           await handleTrack();
           
           if (res.status === 'delivered') {
               alert("Success! Data delivered.");
           } else if (res.status === 'paid') {
-              alert("Payment confirmed, but delivery pending. Try again in a moment.");
+              alert("Payment confirmed, delivery pending.");
           } else {
               alert("Status: " + res.status);
           }
@@ -106,24 +106,21 @@ export const Track: React.FC = () => {
         </div>
       </div>
 
-      {/* Hidden Receipt Component */}
+      {/* Shared Hidden Receipt */}
       {receiptTx && (
-        <div className="fixed -left-[9999px]">
-            <div ref={receiptRef} className="w-[400px] bg-white p-8 border border-slate-200 flex flex-col items-center text-center font-sans">
-                <img src="/logo.png" className="h-16 w-auto mb-2 object-contain" />
-                <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-1">SAUKI MART</h1>
-                <p className="text-xs text-slate-500 mb-6 uppercase tracking-widest">Transaction Receipt</p>
-                <div className="w-full h-px bg-slate-100 mb-6"></div>
-                <div className="space-y-4 w-full mb-8 text-left">
-                    <div className="flex justify-between"><span className="text-slate-500">Ref</span><span className="font-mono font-bold text-slate-900">{receiptTx.tx_ref}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Date</span><span className="font-medium text-slate-900">{new Date(receiptTx.createdAt).toLocaleString()}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Service</span><span className="font-bold text-slate-900 capitalize">{receiptTx.type}</span></div>
-                    <div className="flex justify-between text-lg font-bold pt-4 border-t border-slate-100 mt-4"><span className="text-slate-900">Amount</span><span className="text-green-600">{formatCurrency(receiptTx.amount)}</span></div>
-                    <div className="text-center text-xs text-slate-400 mt-4 uppercase font-bold">{receiptTx.status === 'delivered' ? 'SUCCESSFUL' : receiptTx.status}</div>
-                </div>
-                <p className="text-[10px] text-slate-400">Authorized by Sauki Data Links</p>
-            </div>
-        </div>
+        <SharedReceipt 
+            ref={receiptRef}
+            transaction={{
+                tx_ref: receiptTx.tx_ref,
+                amount: receiptTx.amount,
+                date: new Date(receiptTx.createdAt).toLocaleString(),
+                type: receiptTx.type,
+                description: receiptTx.type === 'data' ? 'Data Bundle' : 'Product Order',
+                status: receiptTx.status,
+                customerPhone: receiptTx.phone,
+                customerName: receiptTx.customerName
+            }}
+        />
       )}
 
       {hasSearched && (
@@ -150,7 +147,6 @@ export const Track: React.FC = () => {
                                 <div className="text-lg font-bold text-slate-900">{formatCurrency(tx.amount)}</div>
                                 
                                 <div className="flex gap-2">
-                                    {/* Retry Button Logic */}
                                     {(tx.status === 'pending' || tx.status === 'failed' || (tx.type === 'data' && tx.status === 'paid')) && (
                                         <Button 
                                             variant="outline" 
@@ -163,14 +159,12 @@ export const Track: React.FC = () => {
                                         </Button>
                                     )}
 
-                                    {/* Data Failed Specific Message */}
                                     {tx.type === 'data' && tx.status === 'paid' && (
                                         <div className="hidden sm:flex items-center text-xs text-red-500 font-medium bg-red-50 px-2 py-1 rounded-lg">
                                             <AlertTriangle className="w-3 h-3 mr-1" /> Network Error
                                         </div>
                                     )}
 
-                                    {/* Success Actions */}
                                     {(tx.status === 'delivered' || (tx.type === 'ecommerce' && tx.status === 'paid')) && (
                                         <Button 
                                             variant="secondary" 
