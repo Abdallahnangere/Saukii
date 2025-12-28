@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { DataPlan, NetworkType, PaymentInitResponse } from '../../types';
 import { api } from '../../lib/api';
@@ -6,16 +6,18 @@ import { formatCurrency, NETWORK_BG_COLORS, cn } from '../../lib/utils';
 import { BottomSheet } from '../ui/BottomSheet';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { CheckCircle2, Copy } from 'lucide-react';
+import { CheckCircle2, Copy, Download, AlertCircle, RefreshCw } from 'lucide-react';
+import { toPng } from 'html-to-image';
 
 export const Data: React.FC = () => {
   const [plans, setPlans] = useState<DataPlan[]>([]);
   const [selectedNetwork, setSelectedNetwork] = useState<NetworkType | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<DataPlan | null>(null);
   const [phone, setPhone] = useState('');
-  const [step, setStep] = useState<'plans' | 'confirm' | 'payment' | 'success'>('plans');
+  const [step, setStep] = useState<'plans' | 'confirm' | 'payment' | 'verifying' | 'success' | 'pending'>('plans');
   const [paymentDetails, setPaymentDetails] = useState<PaymentInitResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.getDataPlans().then(setPlans);
@@ -44,6 +46,7 @@ export const Data: React.FC = () => {
         setStep('payment');
     } catch(e) {
         console.error(e);
+        alert("Could not initiate payment. Try again.");
     } finally {
         setIsLoading(false);
     }
@@ -53,19 +56,39 @@ export const Data: React.FC = () => {
       if(!paymentDetails) return;
       setIsLoading(true);
       try {
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate verification
-          setStep('success');
+          const res = await api.verifyTransaction(paymentDetails.tx_ref);
+          
+          if (res.status === 'delivered') {
+              setStep('success');
+          } else {
+              setStep('pending');
+          }
+      } catch(e) {
+          setStep('pending');
       } finally {
           setIsLoading(false);
       }
   }
 
+  const downloadReceipt = async () => {
+    if (receiptRef.current === null) return;
+    try {
+        const dataUrl = await toPng(receiptRef.current, { cacheBust: true, pixelRatio: 3 });
+        const link = document.createElement('a');
+        link.download = `SAUKI-RECEIPT-${paymentDetails?.tx_ref || 'data'}.png`;
+        link.href = dataUrl;
+        link.click();
+    } catch (err) {
+        console.error('Could not generate receipt', err);
+    }
+  };
+
   const handleClose = () => {
-      // If closing from success, reset everything
-      if (step === 'success') {
+      if (step === 'success' || step === 'pending') {
           setSelectedNetwork(null);
+          setSelectedPlan(null);
+          setPhone('');
       }
-      setSelectedPlan(null);
       setStep('plans');
       setPaymentDetails(null);
   }
@@ -82,7 +105,7 @@ export const Data: React.FC = () => {
                        key={net}
                        whileTap={{ scale: 0.98 }}
                        onClick={() => handleNetworkSelect(net as NetworkType)}
-                       className={cn("w-full h-20 rounded-2xl flex items-center px-6 font-bold text-lg shadow-sm transition-all", NETWORK_BG_COLORS[net])}
+                       className={cn("w-full h-24 rounded-2xl flex items-center px-8 font-bold text-xl shadow-md transition-all border border-transparent hover:border-slate-200", NETWORK_BG_COLORS[net])}
                    >
                        {net}
                    </motion.button>
@@ -90,21 +113,23 @@ export const Data: React.FC = () => {
            </div>
        ) : (
            <div>
-               <button onClick={() => setSelectedNetwork(null)} className="text-sm text-slate-500 mb-4 hover:text-slate-900">← Change Network</button>
-               <h2 className="text-xl font-bold text-slate-900 mb-4">{selectedNetwork} Plans</h2>
+               <button onClick={() => setSelectedNetwork(null)} className="text-sm text-slate-500 mb-4 hover:text-slate-900 flex items-center">
+                 Back to Networks
+               </button>
+               <h2 className="text-xl font-bold text-slate-900 mb-4">{selectedNetwork} Bundles</h2>
                <div className="grid gap-3">
                    {filteredPlans.map(plan => (
                        <motion.div
                            key={plan.id}
                            whileTap={{ scale: 0.99 }}
                            onClick={() => handlePlanSelect(plan)}
-                           className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center"
+                           className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center cursor-pointer hover:border-slate-300 transition-colors"
                        >
                            <div>
                                <div className="text-lg font-bold text-slate-900">{plan.data}</div>
-                               <div className="text-xs text-slate-500">{plan.validity}</div>
+                               <div className="text-xs text-slate-500 mt-1">{plan.validity}</div>
                            </div>
-                           <div className="text-base font-semibold text-slate-900 bg-slate-50 px-3 py-1 rounded-lg">
+                           <div className="text-base font-semibold text-slate-900 bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
                                {formatCurrency(plan.price)}
                            </div>
                        </motion.div>
@@ -116,72 +141,145 @@ export const Data: React.FC = () => {
        <BottomSheet isOpen={!!selectedPlan} onClose={handleClose} title="Purchase Data">
            {step === 'confirm' && selectedPlan && (
                <div className="space-y-6">
-                   <div className="text-center pb-4 border-b border-slate-100">
+                   <div className="text-center pb-6 border-b border-slate-100">
                        <span className={cn("px-3 py-1 rounded-full text-xs font-bold mb-2 inline-block", NETWORK_BG_COLORS[selectedPlan.network])}>
                            {selectedPlan.network}
                        </span>
-                       <h3 className="text-3xl font-bold text-slate-900">{selectedPlan.data}</h3>
+                       <h3 className="text-4xl font-black text-slate-900 my-2">{selectedPlan.data}</h3>
                        <p className="text-slate-500">{selectedPlan.validity}</p>
                    </div>
                    
                    <Input 
-                        label="Phone Number" 
-                        placeholder="080..." 
+                        label="Beneficiary Phone Number" 
+                        placeholder="e.g. 08012345678" 
                         type="tel" 
                         value={phone} 
                         onChange={e => setPhone(e.target.value)} 
+                        className="text-lg tracking-wide"
                    />
                    
-                   <div className="flex justify-between items-center pt-2">
-                       <span className="text-slate-600">Total</span>
+                   <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl">
+                       <span className="text-slate-600 font-medium">Total Amount</span>
                        <span className="text-xl font-bold text-slate-900">{formatCurrency(selectedPlan.price)}</span>
                    </div>
 
-                   <Button onClick={handleInitiatePayment} isLoading={isLoading}>Pay Securely</Button>
+                   <Button onClick={handleInitiatePayment} isLoading={isLoading} className="h-14 text-lg">Pay Securely</Button>
                </div>
            )}
 
            {step === 'payment' && paymentDetails && (
                <div className="space-y-6">
-                    <div className="bg-orange-50 border border-orange-100 p-4 rounded-xl text-center">
-                     <p className="text-sm text-orange-800 mb-1">Transfer exactly</p>
-                     <p className="text-2xl font-bold text-orange-900">{formatCurrency(paymentDetails.amount)}</p>
+                    <div className="bg-orange-50 border border-orange-100 p-6 rounded-2xl text-center">
+                     <p className="text-sm text-orange-800 mb-2 font-medium">Transfer EXACTLY</p>
+                     <p className="text-3xl font-black text-orange-900">{formatCurrency(paymentDetails.amount)}</p>
+                     <p className="text-xs text-orange-600 mt-2">Use your mobile banking app to transfer.</p>
                  </div>
                  
                  <div className="space-y-4">
-                     <div className="bg-slate-50 p-4 rounded-xl flex items-center justify-between">
+                     <div className="bg-white border border-slate-100 p-4 rounded-xl flex items-center justify-between shadow-sm">
                          <div>
-                             <p className="text-xs text-slate-500">Bank Name</p>
-                             <p className="font-medium">{paymentDetails.bank}</p>
+                             <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Bank Name</p>
+                             <p className="font-bold text-slate-900">{paymentDetails.bank}</p>
                          </div>
                      </div>
-                     <div className="bg-slate-50 p-4 rounded-xl flex items-center justify-between">
+                     <div className="bg-white border border-slate-100 p-4 rounded-xl flex items-center justify-between shadow-sm">
                          <div>
-                             <p className="text-xs text-slate-500">Account Number</p>
-                             <p className="font-mono text-lg font-bold tracking-wider">{paymentDetails.account_number}</p>
+                             <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Account Number</p>
+                             <p className="font-mono text-xl font-bold tracking-wider text-slate-900">{paymentDetails.account_number}</p>
                          </div>
-                         <Button variant="ghost" className="w-auto h-auto p-2" onClick={() => navigator.clipboard.writeText(paymentDetails.account_number)}>
-                             <Copy className="w-4 h-4" />
+                         <Button variant="ghost" className="w-auto h-auto p-2 text-blue-600" onClick={() => navigator.clipboard.writeText(paymentDetails.account_number)}>
+                             <Copy className="w-5 h-5" />
                          </Button>
+                     </div>
+                     <div className="bg-white border border-slate-100 p-4 rounded-xl flex items-center justify-between shadow-sm">
+                         <div>
+                             <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">Account Name</p>
+                             <p className="font-bold text-slate-900">{paymentDetails.account_name}</p>
+                         </div>
                      </div>
                  </div>
 
-                 <Button onClick={handleVerify} isLoading={isLoading} className="w-full bg-green-600 hover:bg-green-700 text-white">
+                 <Button onClick={handleVerify} isLoading={isLoading} className="w-full bg-green-600 hover:bg-green-700 text-white h-14 text-lg font-bold shadow-lg shadow-green-200">
                      I Have Paid
                  </Button>
                </div>
            )}
 
-           {step === 'success' && (
-                <div className="text-center space-y-6 py-8">
-                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+           {step === 'pending' && (
+               <div className="text-center space-y-6 py-8">
+                   <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
+                       <RefreshCw className="w-10 h-10 text-orange-600" />
+                   </div>
+                   <div>
+                       <h2 className="text-xl font-bold text-slate-900">Payment Not Confirmed Yet</h2>
+                       <p className="text-slate-500 mt-2 text-sm px-6">
+                           We haven't received the funds yet. Transfers can take a few minutes. 
+                           <br/><br/>
+                           Please check the <strong>Track</strong> tab later to see your status.
+                       </p>
+                   </div>
+                   <Button variant="outline" onClick={handleClose}>Close & Check Later</Button>
+               </div>
+           )}
+
+           {step === 'success' && selectedPlan && (
+                <div className="text-center space-y-6 py-4">
+                 
+                 {/* Hidden Receipt for Generation */}
+                 <div className="fixed -left-[9999px]">
+                    <div ref={receiptRef} className="w-[400px] bg-white p-8 border border-slate-200 flex flex-col items-center text-center font-sans">
+                        <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-1">SAUKI MART</h1>
+                        <p className="text-xs text-slate-500 mb-6 uppercase tracking-widest">Transaction Receipt</p>
+                        
+                        <div className="w-full h-px bg-slate-100 mb-6"></div>
+
+                        <div className="space-y-4 w-full mb-8">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">Transaction Ref</span>
+                                <span className="font-mono font-medium text-slate-900">{paymentDetails?.tx_ref}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">Date</span>
+                                <span className="font-medium text-slate-900">{new Date().toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">Product</span>
+                                <span className="font-bold text-slate-900">{selectedPlan.network} {selectedPlan.data}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-slate-500">Beneficiary</span>
+                                <span className="font-medium text-slate-900">{phone}</span>
+                            </div>
+                            <div className="flex justify-between text-lg font-bold pt-4 border-t border-slate-100 mt-4">
+                                <span className="text-slate-900">Total Paid</span>
+                                <span className="text-green-600">{formatCurrency(selectedPlan.price)}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 justify-center mb-2">
+                             <div className="w-16 h-8 bg-slate-100 flex items-center justify-center text-[10px] text-slate-400">SMEDAN</div>
+                        </div>
+                        <p className="text-[10px] text-slate-400">Authorized by Sauki Data Links</p>
+                    </div>
+                 </div>
+
+                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-green-100 animate-in zoom-in">
                      <CheckCircle2 className="w-10 h-10 text-green-600" />
                  </div>
                  <div>
-                     <h2 className="text-2xl font-bold text-slate-900">Data Sent!</h2>
-                     <p className="text-slate-500 mt-2">Your bundle will be active shortly.</p>
+                     <h2 className="text-2xl font-bold text-slate-900">Data Sent Successfully!</h2>
+                     <p className="text-slate-500 mt-2 text-sm">The bundle has been credited to {phone}.</p>
                  </div>
-                 <Button variant="outline" onClick={handleClose}>Done</Button>
+                 
+                 <div className="flex flex-col gap-3">
+                     <Button 
+                        onClick={downloadReceipt}
+                        className="bg-slate-900 text-white shadow-lg shadow-slate-200"
+                    >
+                        <Download className="w-4 h-4 mr-2" /> Download Receipt
+                     </Button>
+                     <Button variant="outline" onClick={handleClose}>Done</Button>
+                 </div>
              </div>
            )}
        </BottomSheet>

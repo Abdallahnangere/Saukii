@@ -10,6 +10,7 @@ const AMIGO_NETWORKS: Record<string, number> = {
 };
 
 export async function POST(req: Request) {
+  // 1. Verify Signature
   const secret = process.env.FLUTTERWAVE_WEBHOOK_SECRET;
   const signature = req.headers.get('verif-hash');
 
@@ -17,40 +18,55 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
+  // 2. Parse Body
   const body = await req.json();
-  const { txRef, status } = body.data || body; // Adjust based on exact FW webhook payload structure
+  // Flutterwave webhook payload structure varies slightly by event, but usually data is inside `data`
+  const payload = body.data || body; 
+  const { txRef, status } = payload; 
+  // Note: Flutterwave often sends `txRef` or `tx_ref`. Check strictly.
+  const reference = txRef || payload.tx_ref;
 
+  // 3. Strict Success Check
   if (status !== 'successful') {
      return NextResponse.json({ received: true });
   }
 
-  // Idempotency Check & Logic similar to Verify Endpoint
-  // In a real production app, extract this logic to a shared service
-  
   try {
-    const transaction = await prisma.transaction.findUnique({ where: { tx_ref: txRef } });
-    if (!transaction) return NextResponse.json({ error: 'Tx not found' }, { status: 404 });
+    // 4. Find Transaction
+    const transaction = await prisma.transaction.findUnique({ where: { tx_ref: reference } });
+    
+    if (!transaction) {
+        // Transaction not found? Log it.
+        console.log(`Webhook: Transaction ${reference} not found.`);
+        return NextResponse.json({ error: 'Tx not found' }, { status: 404 });
+    }
 
+    // 5. Process Payment if not already processed
     if (transaction.status === 'pending') {
+        // Mark as PAID first
         await prisma.transaction.update({
             where: { id: transaction.id },
             data: { status: 'paid' }
         });
         
-        // DATA DELIVERY LOGIC
+        // 6. DELIVER DATA (If it's a data transaction)
         if (transaction.type === 'data') {
              const plan = await prisma.dataPlan.findUnique({ where: { id: transaction.planId! } });
+             
              if (plan) {
                  const networkId = AMIGO_NETWORKS[plan.network];
+                 
                  try {
+                    const amigoPayload = {
+                        network: networkId,
+                        mobile_number: transaction.phone,
+                        plan: plan.planId, // Amigo Plan ID (Integer)
+                        Ported_number: true
+                    };
+
                     const amigoRes = await axios.post(
-                        `${process.env.AMIGO_BASE_URL}/api/data/`,
-                        {
-                            network: networkId,
-                            mobile_number: transaction.phone,
-                            plan: plan.planId,
-                            Ported_number: true
-                        },
+                        'https://amigo.ng/api/data/',
+                        amigoPayload,
                         {
                             headers: {
                                 'X-API-Key': process.env.AMIGO_API_KEY,
@@ -59,14 +75,20 @@ export async function POST(req: Request) {
                         }
                     );
                     
-                    if (amigoRes.data.success || amigoRes.data.status === 'delivered') {
+                    if (amigoRes.data.success === true || amigoRes.data.status === 'delivered') {
                         await prisma.transaction.update({
                             where: { id: transaction.id },
-                            data: { status: 'delivered', deliveryData: amigoRes.data }
+                            data: { 
+                                status: 'delivered', 
+                                deliveryData: amigoRes.data 
+                            }
                         });
+                        console.log(`Webhook: Data delivered for ${reference}`);
+                    } else {
+                        console.error(`Webhook: Amigo failed for ${reference}`, amigoRes.data);
                     }
-                 } catch (e) {
-                     console.error("Webhook Amigo Fail", e);
+                 } catch (e: any) {
+                     console.error("Webhook: Amigo API Error", e?.response?.data || e.message);
                  }
              }
         }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '../../../../lib/prisma';
 import axios from 'axios';
 
+// Amigo Network Mapping
 const AMIGO_NETWORKS: Record<string, number> = {
   'MTN': 1,
   'GLO': 2,
@@ -13,27 +14,24 @@ export async function POST(req: Request) {
   try {
     const { tx_ref } = await req.json();
     
-    // 1. Get Transaction
+    // 1. Get Transaction from DB
     const transaction = await prisma.transaction.findUnique({ where: { tx_ref } });
     if (!transaction) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
 
-    // 2. Return if already final
+    // 2. If already delivered/paid, return immediately to save API calls
     if (transaction.status === 'delivered') return NextResponse.json({ status: 'delivered' });
-    if (transaction.status === 'paid' && transaction.type === 'ecommerce') return NextResponse.json({ status: 'paid' });
-
-    // 3. Verify with Flutterwave
-    // Note: In bank transfer flow, we usually verify the FLW transaction ID, but here we use tx_ref lookup
-    // Assuming we can lookup by tx_ref or re-query the charge endpoint if we stored the flw_ref
-    // For V3, standard verification endpoint:
+    
+    // 3. STRICT: Verify with Flutterwave
     const flwVerify = await axios.get(`https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=${tx_ref}`, {
         headers: { Authorization: `Bearer ${process.env.FLUTTERWAVE_SECRET_KEY}` }
     });
 
     const flwData = flwVerify.data.data;
 
+    // ONLY proceed if Flutterwave says "successful" AND amount matches
     if (flwVerify.data.status === 'success' && flwData.status === 'successful' && flwData.amount >= transaction.amount) {
         
-        // UPDATE TO PAID
+        // Update DB to PAID if it was pending
         if (transaction.status === 'pending') {
             await prisma.transaction.update({
                 where: { id: transaction.id },
@@ -42,52 +40,58 @@ export async function POST(req: Request) {
             transaction.status = 'paid';
         }
 
-        // 4. TRIGGER AMIGO IF DATA
+        // 4. Trigger Amigo (Instant Data Delivery)
         if (transaction.type === 'data' && transaction.status === 'paid' && !transaction.deliveryData) {
             
-            // Fetch Plan details
+            // Fetch the Plan details to get the Amigo Plan ID (e.g., 1001)
             const plan = await prisma.dataPlan.findUnique({ where: { id: transaction.planId! } });
-            if (!plan) throw new Error('Plan not found for delivery');
+            
+            if (plan) {
+                const networkId = AMIGO_NETWORKS[plan.network];
 
-            const networkId = AMIGO_NETWORKS[plan.network];
-
-            try {
-                const amigoRes = await axios.post(
-                    `${process.env.AMIGO_BASE_URL}/api/data/`,
-                    {
+                try {
+                    // Call Amigo API exactly as documented
+                    const amigoPayload = {
                         network: networkId,
                         mobile_number: transaction.phone,
-                        plan: plan.planId,
+                        plan: plan.planId, // This must be the integer ID (e.g. 1001)
                         Ported_number: true
-                    },
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${process.env.AMIGO_API_KEY}`, // Using Bearer as mostly standard, or X-API-Key if forced
-                            'X-API-Key': process.env.AMIGO_API_KEY, // Providing both for safety based on doc nuances
-                            'Content-Type': 'application/json'
-                        }
-                    }
-                );
+                    };
 
-                if (amigoRes.data.success || amigoRes.data.status === 'delivered') {
-                    await prisma.transaction.update({
-                        where: { id: transaction.id },
-                        data: {
-                            status: 'delivered',
-                            deliveryData: amigoRes.data
+                    const amigoRes = await axios.post(
+                        'https://amigo.ng/api/data/',
+                        amigoPayload,
+                        {
+                            headers: {
+                                'X-API-Key': process.env.AMIGO_API_KEY, // Use X-API-Key header
+                                'Content-Type': 'application/json'
+                            }
                         }
-                    });
-                    transaction.status = 'delivered';
-                } else {
-                    console.error('Amigo Failed:', amigoRes.data);
+                    );
+
+                    // Check Amigo response
+                    // Amigo returns { success: true, status: 'delivered', ... }
+                    if (amigoRes.data.success === true || amigoRes.data.status === 'delivered') {
+                        await prisma.transaction.update({
+                            where: { id: transaction.id },
+                            data: {
+                                status: 'delivered',
+                                deliveryData: amigoRes.data
+                            }
+                        });
+                        transaction.status = 'delivered';
+                    } else {
+                        console.error('Amigo Delivery Failed:', amigoRes.data);
+                        // We keep status as 'paid' so admin can see money is in but data failed
+                    }
+                } catch (amigoError: any) {
+                    console.error('Amigo API Network Error:', amigoError?.response?.data || amigoError.message);
                 }
-            } catch (amigoError) {
-                console.error('Amigo API Error:', amigoError);
-                // Keep status as PAID so admin can retry
             }
         }
     }
 
+    // Return the status (It will be 'pending' if FLW failed, 'paid' if money in but Amigo failed, 'delivered' if all good)
     return NextResponse.json({ status: transaction.status });
 
   } catch (error) {

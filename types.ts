@@ -13,6 +13,7 @@ export interface DataPlan {
   data: string;
   validity: string;
   price: number;
+  planId: number; // Amigo Plan ID
 }
 
 export interface Transaction {
@@ -22,7 +23,9 @@ export interface Transaction {
   status: 'pending' | 'paid' | 'delivered' | 'failed';
   phone: string;
   amount: number;
+  planId?: string; // Relation ID to DataPlan
   createdAt: string;
+  deliveryData?: any;
 }
 
 export interface PaymentInitResponse {
