@@ -25,51 +25,59 @@ export async function POST(req: Request) {
 
             const flwData = flwVerify.data.data;
 
+            // Check specifically for successful charge
             if (flwVerify.data.status === 'success' && flwData.status === 'successful' && flwData.amount >= transaction.amount) {
                 await prisma.transaction.update({
                     where: { id: transaction.id },
-                    data: { status: 'paid' }
+                    data: { 
+                        status: 'paid',
+                        paymentData: JSON.stringify(flwData)
+                    }
                 });
                 currentStatus = 'paid';
             }
         } catch (error) {
             console.error('FLW Verify Error:', error);
-            return NextResponse.json({ status: 'pending' }); 
+            // Don't fail the request, just stay pending
         }
     }
 
-    // 4. If Paid, Trigger Delivery via AWS Tunnel
+    // 4. TRIGGER DELIVERY (The Critical Fix)
+    // If Paid AND it's Data AND not yet delivered -> Call Amigo
     if (currentStatus === 'paid' && transaction.type === 'data') {
-        if (!transaction.deliveryData) {
-            const plan = await prisma.dataPlan.findUnique({ where: { id: transaction.planId! } });
+        
+        console.log(`[Auto-Delivery] Attempting delivery for ${tx_ref}`);
+        
+        const plan = await prisma.dataPlan.findUnique({ where: { id: transaction.planId! } });
+        
+        if (plan) {
+            const networkId = AMIGO_NETWORKS[plan.network];
             
-            if (plan) {
-                const networkId = AMIGO_NETWORKS[plan.network];
-                
-                // Amigo Payload
-                const amigoPayload = {
-                    network: networkId,
-                    mobile_number: transaction.phone,
-                    plan: Number(plan.planId),
-                    Ported_number: true
-                };
+            // Exact payload format that works in console
+            const amigoPayload = {
+                network: networkId,
+                mobile_number: transaction.phone,
+                plan: Number(plan.planId),
+                Ported_number: true
+            };
 
-                // Call Tunnel
-                const amigoRes = await callAmigoAPI('/data/', amigoPayload, tx_ref);
+            // Call Tunnel
+            const amigoRes = await callAmigoAPI('data/', amigoPayload, tx_ref); // Using 'data/' as endpoint
 
-                // Check for explicit success OR 'delivered' status in response
-                if (amigoRes.success && (amigoRes.data.success === true || amigoRes.data.status === 'delivered')) {
-                    await prisma.transaction.update({
-                        where: { id: transaction.id },
-                        data: {
-                            status: 'delivered',
-                            deliveryData: amigoRes.data
-                        }
-                    });
-                    currentStatus = 'delivered';
-                } else {
-                    console.error('Amigo Delivery Failed:', amigoRes.data);
-                }
+            const isSuccess = amigoRes.success && (amigoRes.data.success === true || amigoRes.data.status === 'delivered' || amigoRes.data.Status === 'successful');
+
+            if (isSuccess) {
+                await prisma.transaction.update({
+                    where: { id: transaction.id },
+                    data: {
+                        status: 'delivered',
+                        deliveryData: JSON.stringify(amigoRes.data)
+                    }
+                });
+                currentStatus = 'delivered';
+                console.log(`[Auto-Delivery] SUCCESS for ${tx_ref}`);
+            } else {
+                console.error(`[Auto-Delivery] FAILED for ${tx_ref}`, amigoRes.data);
             }
         }
     }
@@ -77,7 +85,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ status: currentStatus });
 
   } catch (error) {
-    console.error('Verification Error:', error);
+    console.error('Verification System Error:', error);
     return NextResponse.json({ error: 'Verification failed' }, { status: 500 });
   }
 }

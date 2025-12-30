@@ -6,7 +6,7 @@ import { callAmigoAPI, AMIGO_NETWORKS } from '../../../../lib/amigo';
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { phone, planId, password } = body;
+        const { phone, planId, password, receiptAmount } = body;
 
         if (password !== process.env.ADMIN_PASSWORD) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -25,23 +25,23 @@ export async function POST(req: Request) {
             Ported_number: true
         };
 
-        // Call Tunnel
-        const amigoRes = await callAmigoAPI('/data/', amigoPayload, idempotencyKey);
+        // Call Tunnel with 'data/' endpoint
+        const amigoRes = await callAmigoAPI('data/', amigoPayload, idempotencyKey);
 
         const tx_ref = idempotencyKey;
-        const isSuccess = amigoRes.success && (amigoRes.data.success === true || amigoRes.data.status === 'delivered');
+        // Check loosely for success properties
+        const isSuccess = amigoRes.success && (amigoRes.data.success === true || amigoRes.data.status === 'delivered' || amigoRes.data.Status === 'successful');
         
         const transaction = await prisma.transaction.create({
             data: {
                 tx_ref,
-                idempotencyKey:tx_ref,
                 type: 'data',
                 status: isSuccess ? 'delivered' : 'failed',
                 phone,
-                amount: 0,
+                amount: receiptAmount ? Number(receiptAmount) : plan.price, // Use override amount
                 planId: plan.id,
-                deliveryData: amigoRes.data,
-                paymentData: { method: 'Manual Admin Topup' }
+                deliveryData: JSON.stringify(amigoRes.data),
+                paymentData: JSON.stringify({ method: 'Manual Admin Topup' })
             }
         });
 

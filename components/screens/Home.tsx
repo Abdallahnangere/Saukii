@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Smartphone, Wifi, Phone, Mail, Headphones, MessageCircle } from 'lucide-react';
+import { Smartphone, Wifi, Phone, Mail, Headphones, MessageCircle, AlertCircle, Newspaper } from 'lucide-react';
 import { BottomSheet } from '../ui/BottomSheet';
 
 interface HomeProps {
@@ -9,6 +9,18 @@ interface HomeProps {
 
 export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [announcement, setAnnouncement] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/system/announcement')
+      .then(res => res.json())
+      .then(data => {
+        if (data.isActive && data.announcement) {
+          setAnnouncement(data.announcement);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   return (
     <div className="p-6 space-y-8 pb-32">
@@ -22,6 +34,23 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
             <img src="/logo.png" alt="Sauki" className="w-full h-full object-contain" />
         </div>
       </header>
+
+      {/* Announcement Banner */}
+      {announcement && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3"
+        >
+          <div className="bg-blue-100 p-1.5 rounded-full mt-0.5">
+            <Newspaper className="w-4 h-4 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Notice</p>
+            <p className="text-sm text-slate-700 leading-relaxed">{announcement}</p>
+          </div>
+        </motion.div>
+      )}
 
       {/* Action Grid */}
       <div className="grid grid-cols-2 gap-4">
@@ -73,7 +102,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
              <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center mb-4 border border-slate-100">
                 <Headphones className="w-5 h-5 text-slate-700" />
              </div>
-            <h3 className="text-lg font-bold leading-tight">Help &<br/>Contact</h3>
+            <h3 className="text-lg font-bold leading-tight">Help &<br/>Legal</h3>
           </div>
         </motion.div>
       </div>
@@ -100,7 +129,7 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      <BottomSheet isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} title="Contact Us">
+      <BottomSheet isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} title="Support & Legal">
           <div className="space-y-6">
               <div className="text-center space-y-1">
                   <p className="text-sm font-medium text-slate-900">We are here to help!</p>
@@ -137,6 +166,16 @@ export const Home: React.FC<HomeProps> = ({ onNavigate }) => {
                           <p className="font-semibold text-slate-900">saukidatalinks@gmail.com</p>
                       </div>
                   </a>
+
+                  <button onClick={() => { setIsSupportOpen(false); onNavigate('legal'); }} className="flex items-center p-4 rounded-xl bg-slate-900 hover:bg-slate-800 transition-colors border border-slate-900 text-white">
+                      <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center mr-4">
+                          <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                          <p className="text-xs text-slate-400">View Documents</p>
+                          <p className="font-semibold">Privacy Policy & Terms</p>
+                      </div>
+                  </button>
               </div>
           </div>
       </BottomSheet>

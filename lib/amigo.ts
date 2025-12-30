@@ -2,50 +2,43 @@ import axios from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 
 // CONFIGURATION
-// AMIGO_BASE_URL: The actual destination (e.g. https://amigo.ng/api)
-// AWS_PROXY_URL: The Squid Proxy Address (e.g. http://35.x.x.x:3128)
 const AMIGO_URL = process.env.AMIGO_BASE_URL?.replace(/\/$/, '') || 'https://amigo.ng/api'; 
 const PROXY_URL = process.env.AWS_PROXY_URL; 
 const API_KEY = process.env.AMIGO_API_KEY || '';
 
-// Configure Proxy Agent
-// This tells Axios to tunnel the HTTPS request through our AWS Squid Proxy
-// to ensure the request originates from our Static IP.
 let httpsAgent;
 if (PROXY_URL) {
-    // HttpsProxyAgent handles the HTTP CONNECT method to the proxy
     httpsAgent = new HttpsProxyAgent(PROXY_URL);
-} else {
-    console.warn("⚠️ AWS_PROXY_URL is missing. Connection may fail if Static IP is required.");
 }
 
 // Create Axios Instance
 export const amigoClient = axios.create({
   baseURL: AMIGO_URL,
   httpsAgent: httpsAgent,
-  proxy: false, // Important: Disable default axios proxy logic to use the agent explicitly
+  proxy: false,
   headers: {
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_KEY}`, // Some endpoints might use Bearer
+    'Token': API_KEY, // Try both standard headers
     'X-API-Key': API_KEY,
     'Accept': 'application/json',
   },
-  timeout: 60000, // 60s timeout
+  timeout: 60000, 
 });
 
-/**
- * Helper to call Amigo endpoints.
- * Routes traffic through the configured AWS Proxy.
- */
 export async function callAmigoAPI(endpoint: string, payload: any, idempotencyKey?: string) {
   if (!AMIGO_URL) {
     return { success: false, data: { error: 'Configuration Error: AMIGO_BASE_URL missing' }, status: 500 };
   }
 
-  // Ensure strict path formatting for Amigo (usually expects trailing slash for POSTs)
-  let cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  if (!cleanEndpoint.endsWith('/')) cleanEndpoint += '/';
-
-  console.log(`[Amigo API] 🚀 Sending to: ${AMIGO_URL}${cleanEndpoint} ${PROXY_URL ? '(via Proxy)' : '(Direct)'}`);
+  // ROBUST URL HANDLING
+  // If endpoint is "/data/", and base is "https://amigo.ng/api", result is "https://amigo.ng/api/data/"
+  // We remove leading slash from endpoint to let axios handle baseURL correctly, OR we handle it manually.
+  // Best practice with Axios baseURL: Endpoint should NOT start with / if baseURL has it, but let's be safe.
+  
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+  
+  console.log(`[Amigo API] 🚀 Tunneling to: ${AMIGO_URL}/${cleanEndpoint}`);
 
   try {
     const headers: Record<string, string> = {};
@@ -53,7 +46,7 @@ export async function callAmigoAPI(endpoint: string, payload: any, idempotencyKe
       headers['Idempotency-Key'] = idempotencyKey;
     }
 
-    const response = await amigoClient.post(cleanEndpoint, payload, { headers });
+    const response = await amigoClient.post(`/${cleanEndpoint}`, payload, { headers });
     
     return {
       success: true,
@@ -73,7 +66,6 @@ export async function callAmigoAPI(endpoint: string, payload: any, idempotencyKe
   }
 }
 
-// Network Mapping
 export const AMIGO_NETWORKS: Record<string, number> = {
   'MTN': 1,
   'GLO': 2,

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Home } from './components/screens/Home';
 import { Store } from './components/screens/Store';
 import { Data } from './components/screens/Data';
 import { Track } from './components/screens/Track';
+import { Legal } from './components/screens/Legal';
 import { BottomTabs } from './components/BottomTabs';
 import { ToastContainer } from './components/ui/Toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,6 +19,7 @@ const App: React.FC = () => {
       case 'store': return <Store />;
       case 'data': return <Data />;
       case 'track': return <Track />;
+      case 'legal': return <Legal />;
       default: return <Home onNavigate={setActiveTab} />;
     }
   };
@@ -48,7 +50,7 @@ const App: React.FC = () => {
                   {renderScreen()}
                 </motion.main>
               </AnimatePresence>
-              <BottomTabs activeTab={activeTab} onChange={setActiveTab} />
+              <BottomTabs activeTab={activeTab === 'legal' ? 'home' : activeTab} onChange={setActiveTab} />
           </motion.div>
       )}
     </div>

@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   title: "SAUKI MART",
   description: "Premium Mobile Commerce & Instant Data App",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SAUKI MART",
+  },
 };
 
 export const viewport: Viewport = {
@@ -16,6 +21,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  themeColor: "#0f172a", // Matches slate-900 for Android Chrome
 };
 
 export default function RootLayout({
