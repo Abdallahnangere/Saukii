@@ -1,37 +1,51 @@
 import axios from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
-// Configuration
-const AWS_PROXY_URL = process.env.AMIGO_AWS_URL?.replace(/\/$/, '') || ''; // Your AWS Tunnel URL
-const AMIGO_API_KEY = process.env.AMIGO_API_KEY || '';
+// CONFIGURATION
+// AMIGO_BASE_URL: The actual destination (e.g. https://amigo.ng/api)
+// AWS_PROXY_URL: The Squid Proxy Address (e.g. http://35.x.x.x:3128)
+const AMIGO_URL = process.env.AMIGO_BASE_URL?.replace(/\/$/, '') || 'https://amigo.ng/api'; 
+const PROXY_URL = process.env.AWS_PROXY_URL; 
+const API_KEY = process.env.AMIGO_API_KEY || '';
 
-// Create a dedicated Axios instance for Amigo via AWS
+// Configure Proxy Agent
+// This tells Axios to tunnel the HTTPS request through our AWS Squid Proxy
+// to ensure the request originates from our Static IP.
+let httpsAgent;
+if (PROXY_URL) {
+    // HttpsProxyAgent handles the HTTP CONNECT method to the proxy
+    httpsAgent = new HttpsProxyAgent(PROXY_URL);
+} else {
+    console.warn("⚠️ AWS_PROXY_URL is missing. Connection may fail if Static IP is required.");
+}
+
+// Create Axios Instance
 export const amigoClient = axios.create({
-  baseURL: AWS_PROXY_URL,
+  baseURL: AMIGO_URL,
+  httpsAgent: httpsAgent,
+  proxy: false, // Important: Disable default axios proxy logic to use the agent explicitly
   headers: {
     'Content-Type': 'application/json',
-    'X-API-Key': AMIGO_API_KEY,
+    'X-API-Key': API_KEY,
     'Accept': 'application/json',
   },
-  // Timeout to prevent hanging if AWS is slow
-  timeout: 45000, 
+  timeout: 60000, // 60s timeout
 });
 
 /**
- * Helper to call Amigo endpoints through the AWS Tunnel.
- * Ensures strict path formatting and error handling.
+ * Helper to call Amigo endpoints.
+ * Routes traffic through the configured AWS Proxy.
  */
 export async function callAmigoAPI(endpoint: string, payload: any, idempotencyKey?: string) {
-  if (!AWS_PROXY_URL) {
-    throw new Error('AMIGO_AWS_URL is not defined in environment variables.');
+  if (!AMIGO_URL) {
+    return { success: false, data: { error: 'Configuration Error: AMIGO_BASE_URL missing' }, status: 500 };
   }
 
-  // Ensure endpoint starts with / and ends with / as per Amigo docs (e.g., /data/)
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  
-  // Amigo specific: some endpoints behave better with trailing slash
-  const finalPath = cleanEndpoint.endsWith('/') ? cleanEndpoint : `${cleanEndpoint}/`;
+  // Ensure strict path formatting for Amigo (usually expects trailing slash for POSTs)
+  let cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  if (!cleanEndpoint.endsWith('/')) cleanEndpoint += '/';
 
-  console.log(`[Amigo Tunnel] Request -> ${AWS_PROXY_URL}${finalPath}`);
+  console.log(`[Amigo API] 🚀 Sending to: ${AMIGO_URL}${cleanEndpoint} ${PROXY_URL ? '(via Proxy)' : '(Direct)'}`);
 
   try {
     const headers: Record<string, string> = {};
@@ -39,8 +53,7 @@ export async function callAmigoAPI(endpoint: string, payload: any, idempotencyKe
       headers['Idempotency-Key'] = idempotencyKey;
     }
 
-    // We call the AWS URL. The AWS server is expected to forward this to https://amigo.ng/api/...
-    const response = await amigoClient.post(finalPath, payload, { headers });
+    const response = await amigoClient.post(cleanEndpoint, payload, { headers });
     
     return {
       success: true,
@@ -49,21 +62,18 @@ export async function callAmigoAPI(endpoint: string, payload: any, idempotencyKe
     };
 
   } catch (error: any) {
-    console.error('[Amigo Tunnel] Error:', error.message);
+    const errorMsg = error.response?.data?.message || error.message;
+    console.error(`[Amigo API] ❌ Failed: ${errorMsg}`);
     
-    // Extract detailed error if available
-    const errorData = error.response?.data || { message: error.message };
-    const status = error.response?.status || 500;
-
     return {
       success: false,
-      data: errorData,
-      status
+      data: error.response?.data || { error: errorMsg },
+      status: error.response?.status || 500
     };
   }
 }
 
-// Map Network Names to Amigo IDs
+// Network Mapping
 export const AMIGO_NETWORKS: Record<string, number> = {
   'MTN': 1,
   'GLO': 2,

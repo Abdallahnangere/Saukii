@@ -10,20 +10,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Generate a test idempotency key
+        // Generate test key
         const idempotencyKey = `CONSOLE-${Date.now()}`;
         
-        console.log(`[Console] Proxying to endpoint: ${endpoint}`);
-
-        // Use the centralized tunnel client
+        // Pass to Tunnel
         const result = await callAmigoAPI(endpoint, payload, idempotencyKey);
 
-        // Return the exact response from the tunnel/Amigo
-        if (!result.success) {
-            return NextResponse.json(result.data, { status: result.status });
-        }
-
-        return NextResponse.json(result.data);
+        // Return whatever the tunnel/amigo sent back
+        return NextResponse.json(result.data, { status: result.status });
 
     } catch (e: any) {
         return NextResponse.json(
@@ -31,8 +25,4 @@ export async function POST(req: Request) {
             { status: 500 }
         );
     }
-}
-
-export async function GET(req: Request) {
-    return NextResponse.json({ error: 'Console GET not supported via Tunnel Client yet. Use POST.' }, { status: 400 });
 }

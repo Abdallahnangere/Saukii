@@ -8,7 +8,6 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { phone, planId, password } = body;
 
-        // Secure this endpoint
         if (password !== process.env.ADMIN_PASSWORD) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
@@ -26,34 +25,32 @@ export async function POST(req: Request) {
             Ported_number: true
         };
 
-        // Call Amigo through AWS Tunnel
+        // Call Tunnel
         const amigoRes = await callAmigoAPI('/data/', amigoPayload, idempotencyKey);
 
         const tx_ref = idempotencyKey;
+        const isSuccess = amigoRes.success && (amigoRes.data.success === true || amigoRes.data.status === 'delivered');
         
-        // Log transaction as Delivered (Manual)
         const transaction = await prisma.transaction.create({
             data: {
                 tx_ref,
-                idempotencyKey:tx_ref,
                 type: 'data',
-                status: (amigoRes.success && (amigoRes.data.success || amigoRes.data.status === 'delivered')) ? 'delivered' : 'failed',
+                status: isSuccess ? 'delivered' : 'failed',
                 phone,
-                amount: 0, // Admin override
+                amount: 0,
                 planId: plan.id,
                 deliveryData: amigoRes.data,
                 paymentData: { method: 'Manual Admin Topup' }
             }
         });
 
-        if (transaction.status === 'failed') {
-            return NextResponse.json({ error: 'Amigo API Failed via Tunnel', details: amigoRes.data }, { status: 400 });
+        if (!isSuccess) {
+            return NextResponse.json({ error: 'Tunnel Delivery Failed', details: amigoRes.data }, { status: 400 });
         }
 
         return NextResponse.json({ success: true, transaction });
 
     } catch (e: any) {
-        console.error(e);
         return NextResponse.json({ error: e.message || 'Server Error' }, { status: 500 });
     }
 }

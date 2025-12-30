@@ -27,19 +27,18 @@ export async function POST(req: Request) {
     const transaction = await prisma.transaction.findUnique({ where: { tx_ref: reference } });
     
     if (!transaction) {
-        console.log(`Webhook: Transaction ${reference} not found.`);
         return NextResponse.json({ error: 'Tx not found' }, { status: 404 });
     }
 
-    // 5. Process Payment if not already processed
+    // 5. Process
     if (transaction.status === 'pending') {
-        // Mark as PAID first
+        // Mark as PAID
         await prisma.transaction.update({
             where: { id: transaction.id },
             data: { status: 'paid' }
         });
         
-        // 6. DELIVER DATA (If it's a data transaction)
+        // 6. Deliver Data via Tunnel
         if (transaction.type === 'data') {
              const plan = await prisma.dataPlan.findUnique({ where: { id: transaction.planId! } });
              
@@ -53,7 +52,6 @@ export async function POST(req: Request) {
                      Ported_number: true
                  };
 
-                 // Call Amigo through AWS Tunnel
                  const amigoRes = await callAmigoAPI('/data/', amigoPayload, reference);
                  
                  if (amigoRes.success && (amigoRes.data.success === true || amigoRes.data.status === 'delivered')) {
@@ -64,9 +62,9 @@ export async function POST(req: Request) {
                              deliveryData: amigoRes.data 
                          }
                      });
-                     console.log(`Webhook: Data delivered for ${reference}`);
+                     console.log(`Webhook: Delivered ${reference}`);
                  } else {
-                     console.error(`Webhook: Amigo failed for ${reference}`, amigoRes.data);
+                     console.error(`Webhook: Failed ${reference}`, amigoRes.data);
                  }
              }
         }
